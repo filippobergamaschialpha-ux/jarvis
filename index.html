@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jarvis</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: nucleo grande al centro, pannelli a sinistra (agenda, cose da fare) e a destra (visite, email). Sotto i 1000px tutto in colonna. Look scuro unico, scelto di proposito. */
+:root{
+  color-scheme: dark;
+  --bg:#07131d; --panel:#0b1c29; --line:#173a50; --fg:#dcedf5; --muted:#86a6b8;
+  --hud:#46cdea; --hud-dim:#1d6a82; --warn:#f0b247; --crit:#ff6d60; --ok:#62d29c; --ink:#04131c;
+  --f-display:"Oxanium","Rajdhani",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--f-body);font-size:14.5px;line-height:1.45;padding-inline:16px;padding-block:14px 24px;background-image:radial-gradient(1100px 600px at 50% 38%, rgba(70,205,234,.10), transparent 70%);min-height:100vh}
+header{max-width:1500px;margin:0 auto 10px;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px}
+.brand{font-family:var(--f-display);font-weight:700;letter-spacing:.32em;font-size:18px;color:var(--hud)}
+.clock{font-family:var(--f-mono);color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.clock b{color:var(--fg);font-weight:500;margin-right:8px}
+.grid{max-width:1500px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,440px) minmax(0,1fr);gap:16px;align-items:start}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.core{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}
+@media (max-width:1000px){
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .core{order:-1;position:static}
+}
+.orb{width:min(420px,100%);aspect-ratio:1;max-width:100%}
+.orb canvas{width:100%;height:100%;display:block}
+.greet{font-family:var(--f-display);font-size:clamp(22px,2.4vw,30px);font-weight:600;margin:0;text-wrap:balance}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;width:100%}
+.kpi{padding:6px 4px;border-top:2px solid var(--line)}
+.kpi b{display:block;font-family:var(--f-mono);font-size:24px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpi span{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.kpi.crit{border-color:var(--crit)}.kpi.crit b{color:var(--crit)}.kpi.warn{border-color:var(--warn)}.kpi.warn b{color:var(--warn)}
+.talk{display:inline-flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:14px;padding:13px 26px;color:var(--ink);background:var(--hud);border-radius:999px;text-decoration:none;border:0}
+.talk:hover{filter:brightness(1.1)}
+.talk .dot{width:9px;height:9px;border-radius:50%;background:var(--ink)}
+.setup{font-size:12.5px;color:var(--muted);display:flex;flex-direction:column;gap:6px;width:100%}
+.setup form{display:flex;gap:6px}
+.setup input{flex:1;min-width:0;font:inherit;font-size:13px;padding:8px 10px;color:var(--fg);background:#06111a;border:1px solid var(--line);border-radius:4px}
+.mini{font-family:var(--f-mono);font-size:11px;padding:4px 10px;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:4px;cursor:pointer}
+.mini:hover{border-color:var(--hud)}
+.linkbtn{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;text-decoration:underline;cursor:pointer;padding:0}
+a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--hud);outline-offset:2px}
+details.sec{background:var(--panel);border:1px solid var(--line);border-radius:6px;min-width:0}
+details.sec>summary{list-style:none;display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none}
+details.sec>summary::-webkit-details-marker{display:none}
+summary .tw{width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;flex:none}
+details[open]>summary .tw{transform:rotate(45deg)}
+summary h2{margin:0;font-family:var(--f-display);font-size:13px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--fg);flex:1}
+.badge{font-family:var(--f-mono);font-size:12px;min-width:26px;text-align:center;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.badge.crit{border-color:var(--crit);color:var(--crit)}
+.meta{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.pb{padding:0 14px 12px;display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto}
+@media (max-width:1000px){.pb{max-height:none}}
+.empty,.err{font-size:13.5px;color:var(--muted)}
+.err{color:var(--warn)} .err button{margin-left:6px}
+ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.item{display:grid;grid-template-columns:3px minmax(0,1fr) auto;gap:12px;align-items:start;padding:8px 0;border-top:1px solid rgba(23,58,80,.7)}
+.item:first-child{border-top:0}
+.item .bar{align-self:stretch;border-radius:2px;background:var(--hud-dim)}
+.item.crit .bar{background:var(--crit)}.item.warn .bar{background:var(--warn)}.item.ok .bar{background:var(--ok)}
+.item .t{font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+.item .s{font-size:12.5px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.item .r{font-family:var(--f-mono);font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.item.crit .r{color:var(--crit)}.item.warn .r{color:var(--warn)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.chip{font-family:var(--f-mono);font-size:10.5px;padding:0 6px;border:1px solid var(--line);border-radius:3px;color:var(--muted)}
+.sub{font-family:var(--f-display);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.unread{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--hud);margin-right:6px;vertical-align:middle}
+footer{max-width:1500px;margin:16px auto 0;font-size:12px;color:var(--muted);text-align:center}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.musicopt{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+.musicopt input{accent-color:var(--hud,#46cdea)}
+</style>
+<script>window.JARVIS_HOST = location.origin + location.pathname;</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+</head><body>
+<style>
+.state{font-family:var(--f-mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--hud);min-height:1.4em}
+.state.err{color:var(--warn);letter-spacing:.04em;text-transform:none}
+.orb{cursor:pointer}
+.talk.on{background:var(--crit)}
+.talk .dot{transition:transform .2s}
+.talk.on .dot{animation:pulse 1s infinite}
+@keyframes pulse{50%{transform:scale(1.5)}}
+.live{font-size:13.5px;color:var(--muted);max-width:420px;min-height:2.8em;text-wrap:balance}
+.approve{width:100%;max-width:440px;text-align:left;background:var(--panel);border:1px solid var(--warn);border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.approve h3{margin:0;font-family:var(--f-display);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--warn)}
+.approve pre{margin:0;white-space:pre-wrap;font-family:var(--f-mono);font-size:12px;color:var(--fg);max-height:180px;overflow:auto}
+.approve .btns{display:flex;gap:8px}
+.approve button{font-family:var(--f-display);font-weight:700;letter-spacing:.1em;text-transform:uppercase;border:0;border-radius:4px;padding:8px 14px;cursor:pointer}
+.approve .yes{background:var(--ok);color:var(--ink)} .approve .no{background:transparent;color:var(--fg);border:1px solid var(--line)}
+
+.handoff{width:100%;max-width:440px;font-size:13px;color:var(--ink);background:var(--warn);border-radius:6px;padding:8px 12px;text-align:left}
+.handoff.here{background:var(--ok)}
+.log{width:100%;max-width:440px;display:flex;flex-direction:column;gap:4px;max-height:210px;overflow:auto;text-align:left;font-size:13px}
+.log .ln{padding:4px 8px;border-left:2px solid var(--line);color:var(--muted);overflow-wrap:anywhere}
+.log .ln b{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;margin-right:6px;color:var(--hud)}
+.log .ln.u{border-color:var(--hud-dim)} .log .ln.a{border-color:var(--ok);color:var(--fg)}
+.synclinks{display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;font-size:12px;color:var(--muted)}
+.pair{width:100%;max-width:440px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;font-size:12.5px;color:var(--muted);text-align:left;display:flex;flex-direction:column;gap:8px}
+.pair input{width:100%;font:inherit;font-size:12px;padding:6px 8px;color:var(--fg);background:#06111a;border:1px solid var(--line);border-radius:4px}
+.pair img{align-self:center;background:#fff;padding:6px;border-radius:4px}
+[hidden]{display:none!important}
+</style>
+
+<header>
+  <div class="brand">JARVIS</div>
+  <div class="clock" id="clock"><b>--:--</b><span></span></div>
+</header>
+
+<main class="grid">
+  <div class="col">
+    <details class="sec" id="s-agenda" open>
+      <summary><span class="tw"></span><h2>Agenda di oggi</h2><span class="badge" id="c-agenda">–</span></summary>
+      <div class="pb" id="agenda"></div>
+    </details>
+    <details class="sec" id="s-task" open>
+      <summary><span class="tw"></span><h2>Cose da fare</h2><span class="badge" id="c-task">–</span></summary>
+      <div class="pb" id="task"></div>
+    </details>
+  </div>
+
+  <section class="core" aria-labelledby="greet">
+    <div class="orb" id="orbWrap" title="Clicca per parlare con Jarvis"><canvas id="orb" aria-hidden="true"></canvas></div>
+    <div class="state" id="state">pronto</div>
+    <p class="greet" id="greet">Buongiorno, Filippo.</p>
+    <div class="kpis">
+      <div class="kpi"><b id="k-app">–</b><span>Appuntamenti</span></div>
+      <div class="kpi crit"><b id="k-late">–</b><span>Scaduti</span></div>
+      <div class="kpi warn"><b id="k-week">–</b><span>Entro 7 gg</span></div>
+      <div class="kpi"><b id="k-mail">–</b><span>Email 24 h</span></div>
+    </div>
+    <button class="talk" id="talk" type="button"><span class="dot"></span><span id="talkLabel">Parla con Jarvis</span></button>
+    <label class="musicopt"><input type="checkbox" id="noMusic"> Parla senza musica</label>
+    <div id="ytWrap" aria-hidden="true" style="position:fixed;right:0;bottom:0;width:200px;height:200px;opacity:.01;pointer-events:none;z-index:-1;overflow:hidden"><div id="ytPlayer"></div></div>
+    <div class="approve" id="approve" hidden><h3>Jarvis vuole modificare</h3><pre id="approveText"></pre><div class="btns"><button class="yes" id="approveYes" type="button">Conferma</button><button class="no" id="approveNo" type="button">Annulla</button></div></div>
+    <div class="live" id="live" aria-live="polite"></div>
+    <div class="handoff" id="handoff" hidden></div>
+    <div class="log" id="log" aria-live="polite"></div>
+    <div class="synclinks"><span id="syncState">sincronizzazione: …</span><button class="linkbtn" id="newConv" type="button">Nuova conversazione</button><button class="linkbtn" id="pairBtn" type="button" hidden>Collega telefono</button></div>
+    <div class="pair" id="pair" hidden><div>Apri questo indirizzo sul telefono (una volta sola) e salvalo tra i preferiti o nella schermata Home. Contiene la chiave che collega i due dispositivi: non condividerlo.</div><input id="pairUrl" readonly><div class="btns"><button class="mini" id="pairCopy" type="button">Copia indirizzo</button></div><div id="pairQr"></div></div>
+    <div class="meta" id="agg"></div>
+  </section>
+
+  <div class="col">
+    <details class="sec" id="s-news" open>
+      <summary><span class="tw"></span><h2>Mercati e notizie</h2><span class="badge" id="c-news">–</span></summary>
+      <div class="pb" id="news"></div>
+    </details>
+    <details class="sec" id="s-visite" open>
+      <summary><span class="tw"></span><h2>Ultime visite</h2><span class="badge" id="c-visite">–</span></summary>
+      <div class="pb" id="visite"></div>
+    </details>
+    <details class="sec" id="s-mail" open>
+      <summary><span class="tw"></span><h2>Email ultime 24 ore</h2><span class="badge" id="c-mail">–</span></summary>
+      <div class="pb" id="mail"></div>
+    </details>
+  </div>
+</main>
+<footer>Clicca la palla o «Parla con Jarvis» e parla a voce. Clicca il titolo di un pannello per chiuderlo o riaprirlo.</footer>
+
+<script src="https://unpkg.com/@elevenlabs/client@1.26.0/dist/lib.iife.js"></script>
+<script>
+(() => {
+"use strict";
+/* indirizzo di collegamento: #k=chiave&a=agente (il frammento non viene mai inviato al sito che ospita la pagina) */
+const HASH = location.hash || "";
+const HASH_K = (/[#&]k=([A-Za-z0-9_-]{43})/.exec(HASH) || [])[1] || null;
+const HASH_A = (/[#&]a=(agent_[A-Za-z0-9]+)/.exec(HASH) || [])[1] || null;
+if (HASH_K || HASH_A) { try { history.replaceState(null, "", location.pathname + location.search); } catch {} }
+const DEFAULT_AGENT = null;
+let AGENT_ID = HASH_A || (() => { try { return localStorage.getItem("jarvis-agent"); } catch { return null; } })() || DEFAULT_AGENT;
+try { if (HASH_A) localStorage.setItem("jarvis-agent", HASH_A); } catch {}
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const store = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch {} } };
+const pad = n => String(n).padStart(2,"0");
+
+document.querySelectorAll("details.sec").forEach(d => {
+  const k = "jarvis-open-" + d.id, v = store.get(k);
+  if (v === "0") d.open = false;
+  d.addEventListener("toggle", () => store.set(k, d.open ? "1" : "0"));
+});
+
+const giorni = ["domenica","lunedì","martedì","mercoledì","giovedì","venerdì","sabato"];
+const mesi = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
+function oggiLungo(d = new Date()){ return giorni[d.getDay()]+" "+d.getDate()+" "+mesi[d.getMonth()]+" "+d.getFullYear(); }
+function tick(){
+  const d = new Date();
+  $("clock").firstChild.textContent = pad(d.getHours())+":"+pad(d.getMinutes());
+  $("clock").lastChild.textContent = oggiLungo(d);
+  const h = d.getHours();
+  $("greet").textContent = (h < 13 ? "Buongiorno" : h < 18 ? "Buon pomeriggio" : "Buonasera") + ", Filippo.";
+}
+tick(); setInterval(tick, 15000);
+
+const todayStr = (d = new Date()) => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+function dayDiff(iso){ if(!iso) return null; const a = new Date(todayStr()+"T00:00:00"), b = new Date(iso.slice(0,10)+"T00:00:00"); return Math.round((b-a)/86400000); }
+function fmtDate(iso){ if(!iso) return ""; const d = new Date(iso.slice(0,10)+"T00:00:00"); return pad(d.getDate())+"/"+pad(d.getMonth()+1); }
+
+/* ---------- pannelli dai dati di dati.js ---------- */
+let D = {};
+function render(){
+  D = window.JARVIS_DATI || {};
+  const agenda = D.agenda || [], task = D.task || [], visite = D.visite || [], email = D.email || [];
+  $("agg").textContent = D.aggiornato ? "Dati aggiornati il " + D.aggiornato + ((D.errori && D.errori.length) ? " · non disponibili: " + D.errori.join(", ") : "") : "Dati non ancora caricati (manca dati.js).";
+
+  $("k-app").textContent = $("c-agenda").textContent = agenda.length;
+  let box = $("agenda"); box.replaceChildren();
+  if (!agenda.length) box.append(el("div","empty","Nessun appuntamento in calendario per oggi."));
+  else { const ul = el("ul","list"); agenda.forEach(a => { const li = el("li","item ok"); li.append(el("span","bar")); const c = el("div"); c.append(el("div","t",a.titolo)); if (a.luogo) c.append(el("div","s",a.luogo)); li.append(c, el("span","r",a.ora||"")); ul.append(li); }); box.append(ul); }
+
+  const late = task.filter(x => x.scad && dayDiff(x.scad) < 0), today = task.filter(x => x.scad && dayDiff(x.scad) === 0);
+  const week = task.filter(x => x.scad && dayDiff(x.scad) > 0 && dayDiff(x.scad) <= 7), alta = task.filter(x => !x.scad && x.prio === "Alta");
+  const later = task.filter(x => (x.scad && dayDiff(x.scad) > 7) || (!x.scad && x.prio !== "Alta"));
+  $("k-late").textContent = late.length; $("k-week").textContent = today.length + week.length;
+  $("c-task").textContent = late.length ? late.length+" scaduti" : task.length; $("c-task").className = late.length ? "badge crit" : "badge";
+  box = $("task"); box.replaceChildren();
+  if (!task.length) box.append(el("div","empty","Nessuna cosa da fare aperta."));
+  const group = (label, list, cls, right) => {
+    if (!list.length) return;
+    box.append(el("div","sub",label+" · "+list.length));
+    const ul = el("ul","list");
+    list.forEach(x => { const li = el("li","item "+cls); li.append(el("span","bar")); const c = el("div"); c.append(el("div","t",x.cosa)); const ch = el("div","chips"); (x.chi||[]).forEach(n => ch.append(el("span","chip",n))); c.append(ch); li.append(c, el("span","r", right(x))); ul.append(li); });
+    box.append(ul);
+  };
+  const byDate = (a,b) => a.scad.localeCompare(b.scad);
+  group("Scaduti", late.sort(byDate), "crit", x => fmtDate(x.scad));
+  group("Oggi", today, "warn", () => "oggi");
+  group("Prossimi 7 giorni", week.sort(byDate), "warn", x => fmtDate(x.scad));
+  group("Alta priorità senza scadenza", alta, "", () => "alta");
+  group("Più avanti / da pianificare", later.sort((a,b) => (a.scad||"9").localeCompare(b.scad||"9")), "", x => x.scad ? fmtDate(x.scad) : (x.prio||"").toLowerCase());
+
+  $("c-visite").textContent = visite.length; box = $("visite"); box.replaceChildren();
+  if (!visite.length) box.append(el("div","empty","Nessuna attività registrata."));
+  else { const ul = el("ul","list"); visite.forEach(v => { const cls = v.esito === "Da ricontattare" ? "warn" : v.esito === "Positivo" ? "ok" : v.esito === "Negativo" ? "crit" : ""; const li = el("li","item "+cls); li.append(el("span","bar")); const c = el("div"); c.append(el("div","t",v.attivita)); if (v.prossima) c.append(el("div","s","→ "+v.prossima)); if (v.esito){ const ch = el("div","chips"); ch.append(el("span","chip",v.esito)); c.append(ch); } li.append(c, el("span","r",fmtDate(v.data))); ul.append(li); }); box.append(ul); }
+
+  $("k-mail").textContent = $("c-mail").textContent = email.length; box = $("mail"); box.replaceChildren();
+  if (!email.length) box.append(el("div","empty","Nessuna email nelle ultime 24 ore."));
+  else { const ul = el("ul","list"); email.forEach(m => { const li = el("li","item"); li.append(el("span","bar")); const c = el("div"); c.append(el("div","t",m.oggetto), el("div","s",m.da)); li.append(c, el("span","r",m.ora||"")); ul.append(li); }); box.append(ul); }
+  const news = D.notizie || [];
+  $("c-news").textContent = news.length; box = $("news"); box.replaceChildren();
+  if (!news.length) box.append(el("div","empty","Nessuna notizia caricata per oggi."));
+  else { const ul = el("ul","list"); news.forEach(n => { const li = el("li","item"); li.append(el("span","bar")); const c = el("div"); c.append(el("div","t",n.titolo)); if (n.dettaglio) c.append(el("div","s",n.dettaglio)); li.append(c, el("span","r",n.fonte||"")); ul.append(li); }); box.append(ul); }
+}
+render();
+/* ricarica dati.js ogni 5 minuti senza ricaricare la pagina */
+setInterval(() => { const s = document.createElement("script"); s.src = "dati.js?t=" + Date.now(); s.onload = () => { render(); try { Sync.dataChanged(); } catch {} s.remove(); }; s.onerror = () => s.remove(); document.head.append(s); }, 300000);
+
+/* ---------- contesto per Jarvis ---------- */
+function contesto(){
+  const now = new Date();
+  const righe = [];
+  righe.push("DATI DASHBOARD DI FILIPPO. Adesso è " + oggiLungo(now) + ", ore " + pad(now.getHours()) + ":" + pad(now.getMinutes()) + ". Dati aggiornati il " + (D.aggiornato || "sconosciuto") + ".");
+  righe.push("Usa questi dati per rispondere subito, senza chiamare strumenti. Usa gli strumenti solo se Filippo chiede qualcosa che qui non c'è o vuole dati più recenti.");
+  righe.push("Per 'attività di oggi' intendi: le visite e attività con data di oggi, gli appuntamenti di oggi e le cose da fare in scadenza oggi.");
+  righe.push("AGENDA DI OGGI: " + ((D.agenda||[]).length ? D.agenda.map(a => (a.ora||"") + " " + a.titolo + (a.luogo ? " (" + a.luogo + ")" : "")).join("; ") : "nessun appuntamento."));
+  righe.push("COSE DA FARE APERTE: " + (D.task||[]).map(t => t.cosa + " [chi: " + (t.chi||[]).join(", ") + "; priorità " + (t.prio||"-") + "; scadenza " + (t.scad||"nessuna") + "]").join(" | "));
+  righe.push("ULTIME VISITE E ATTIVITÀ (con note sui clienti: materie prime usate, fornitori, situazione): " + (D.visite||[]).map(v => v.data + " " + v.attivita + (v.esito ? " (esito " + v.esito + ")" : "") + (v.prossima ? " → " + v.prossima : "") + (v.note ? " [note: " + v.note + "]" : "")).join(" | "));
+  righe.push("MERCATI E NOTIZIE (del " + (D.notizie_data || "giorno non indicato") + "): " + ((D.notizie||[]).length ? D.notizie.map(n => n.titolo + ": " + (n.dettaglio||"") + " (fonte " + (n.fonte||"-") + ")").join(" | ") : "nessuna notizia caricata."));
+  righe.push("Se Filippo chiede a quali clienti proporre sostitutivi di materie prime care, incrocia i prezzi di mercato con le note sui clienti (materie prime che usano) e proponi i 2-3 clienti più adatti spiegando il perché in una frase. Non inventare prezzi che non sono nei dati.");
+  righe.push("EMAIL ULTIME 24 ORE: " + (D.email||[]).map(m => m.ora + " " + m.da + ": " + m.oggetto).join(" | "));
+  return righe.join("\n");
+}
+
+/* ---------- voce ---------- */
+let conv = null, mode = "idle";
+function setState(text, isErr){ $("state").textContent = text; $("state").className = "state" + (isErr ? " err" : ""); }
+function chiediConferma(call, ctx){
+  return new Promise(resolve => {
+    const box = $("approve");
+    const nome = String(call.tool_name || "azione").replace(/^JARVIS_/, "").replace(/_/g, " ");
+    let par = ""; try { par = Object.entries(call.parameters || {}).filter(([k,v]) => v !== "" && v != null && !/^_/.test(k)).map(([k,v]) => k + ": " + (typeof v === "object" ? JSON.stringify(v) : v)).join("\n"); } catch {}
+    $("approveText").textContent = nome + (par ? "\n\n" + par : "");
+    box.hidden = false;
+    const done = ok => { box.hidden = true; $("approveYes").onclick = $("approveNo").onclick = null; resolve(ok); };
+    $("approveYes").onclick = () => done(true);
+    $("approveNo").onclick = () => done(false);
+    if (ctx && ctx.signal) ctx.signal.addEventListener("abort", () => { box.hidden = true; }, { once: true });
+  });
+}
+/* ---------- musica di sottofondo: "Back in Black" (video ufficiale AC/DC, YouTube IFrame API) ---------- */
+const noMusic = $("noMusic");
+noMusic.checked = store.get("jarvis-nomusic") === "1";
+noMusic.addEventListener("change", () => { store.set("jarvis-nomusic", noMusic.checked ? "1" : "0"); if (noMusic.checked) musicStop(); });
+const YT_ID = "pAgnJDJN4VA";
+let yt = null, ytReady = false, ytWant = false, ytVol = 0, fadeT = null;
+window.__music = () => ({ ready: ytReady, want: ytWant, vol: ytVol, state: (yt && yt.getPlayerState) ? yt.getPlayerState() : null, err: window.__ytErr || null });
+window.onYouTubeIframeAPIReady = () => {
+  try {
+    yt = new YT.Player("ytPlayer", {
+      width: "200", height: "200", videoId: YT_ID,
+      playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1, loop: 1, playlist: YT_ID },
+      events: {
+        onReady: () => { ytReady = true; if (ytWant && !noMusic.checked) musicStart(); },
+        onError: e => { window.__ytErr = e && e.data; }
+      }
+    });
+  } catch (e) { window.__ytErr = String(e); }
+};
+(function(){ const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; sc.async = true; document.head.append(sc); })();
+function ytSet(v){ ytVol = v; try { if (ytReady) yt.setVolume(Math.round(Math.max(0, Math.min(1, v)) * 100)); } catch {} }
+function musicVol(v, done){
+  clearInterval(fadeT);
+  fadeT = setInterval(() => {
+    const d = v - ytVol;
+    if (Math.abs(d) < 0.02){ ytSet(v); clearInterval(fadeT); if (done) done(); }
+    else ytSet(ytVol + Math.sign(d) * 0.03);
+  }, 40);
+}
+function musicStart(){
+  if (noMusic.checked) return;
+  ytWant = true;
+  if (!ytReady) return;               // partirà da sola appena il player è pronto
+  try { clearInterval(fadeT); yt.seekTo(0, true); ytSet(0.35); yt.playVideo(); } catch {}
+}
+function musicStop(){
+  ytWant = false;
+  if (!ytReady) return;
+  musicVol(0, () => { try { if (!ytWant) yt.pauseVideo(); } catch {} });
+}
+function musicDuck(speaking){
+  if (!ytReady || !ytWant) return;
+  musicVol(speaking ? 0.06 : 0.14);
+}
+/* ================= SINCRONIZZAZIONE TRA DISPOSITIVI =================
+   La conversazione con Jarvis viaggia cifrata (AES-GCM) su un canale condiviso:
+   chi prende il microfono per secondo riparte dalla trascrizione completa e chi
+   parlava prima viene fermato. La chiave sta solo nei tuoi dispositivi. */
+const SYNC_HOST = (window.JARVIS_RELAY || "https://ntfy.sh").replace(/\/$/, "");
+const HAS_LOCAL_DATA = !!window.JARVIS_DATI;
+const DEV = (() => { let d = store.get("jarvis-dev"); if (!d) { d = Math.random().toString(36).slice(2, 10); store.set("jarvis-dev", d); } return d; })();
+const DEV_NAME = /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent) ? "telefono" : "PC";
+const rnd = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => (b % 36).toString(36)).join("");
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const clean = t => String(t || "").replace(/\[[a-z ]+\]\s*/gi, "").trim();
+
+const Sync = (() => {
+  const S = { sid: null, lines: new Map(), lastActivity: 0, active: null, activeAt: 0, activeName: "", dataAt: "" };
+  const seen = new Set(), parts = new Map();
+  let topic = null, aes = null, es = null, lastId = null, enabled = false, status = "non configurata";
+  let byeSent = false, myActive = false, mySid = null, ownStartSeen = false, ownStartTime = 0, seq = 0, buf = [], flushT = null, stopWire = null, readyP = null;
+  const hooks = { change: () => {}, takeover: () => {} };
+
+  const te = new TextEncoder(), td = new TextDecoder();
+  const b64 = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+  const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  const b64u = u8 => b64(u8).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const unb64u = s => unb64(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+  const hex = u8 => Array.from(u8, b => b.toString(16).padStart(2, "0")).join("");
+  async function pipe(u8, T) { const st = new Blob([u8]).stream().pipeThrough(new T("gzip")); return new Uint8Array(await new Response(st).arrayBuffer()); }
+  const canGz = typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined";
+
+  async function seal(obj) {
+    let body = te.encode(JSON.stringify(obj)), flag = 0;
+    if (canGz) { try { body = await pipe(body, CompressionStream); flag = 1; } catch {} }
+    const plain = new Uint8Array(body.length + 1); plain[0] = flag; plain.set(body, 1);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aes, plain));
+    const out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12);
+    return b64(out);
+  }
+  async function unseal(str) {
+    const raw = unb64(str), iv = raw.subarray(0, 12), ct = raw.subarray(12);
+    const plain = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, aes, ct));
+    let body = plain.subarray(1);
+    if (plain[0] === 1) body = await pipe(body, DecompressionStream);
+    return JSON.parse(td.decode(body));
+  }
+  async function wire(obj) {
+    const s = await seal(obj), id = rnd(8), n = Math.ceil(s.length / 3000) || 1, out = [];
+    for (let i = 0; i < n; i++) out.push(JSON.stringify({ a: id, i, n, p: s.slice(i * 3000, (i + 1) * 3000) }));
+    return out;
+  }
+  async function post(texts) {
+    for (const t of texts) {
+      let ok = false;
+      for (let k = 0; k < 4 && !ok; k++) {
+        try { const r = await fetch(SYNC_HOST + "/" + topic, { method: "POST", body: t }); ok = r.ok; } catch {}
+        if (!ok) await sleep(600 * (k + 1));
+      }
+      if (!ok) { setStatus("offline"); return false; }
+    }
+    setStatus("attiva");
+    return true;
+  }
+  let q = Promise.resolve();
+  const publish = obj => { q = q.then(async () => { if (!enabled) return; try { await post(await wire(obj)); } catch {} }); return q; };
+
+  function setStatus(s) { status = s; hooks.change(); }
+
+  /* ---- ricezione ---- */
+  let iq = Promise.resolve();
+  const ingest = m => (iq = iq.then(() => ingestOne(m)).catch(() => {}));
+  async function ingestOne(m) {
+    if (!m || m.event !== "message" || !m.message || seen.has(m.id)) return;
+    seen.add(m.id); lastId = m.id;
+    let w; try { w = JSON.parse(m.message); } catch { return; }
+    if (!w || !w.a || typeof w.p !== "string") return;
+    let e = parts.get(w.a); if (!e) { e = { n: w.n, p: [], t: Date.now() }; parts.set(w.a, e); }
+    e.p[w.i] = w.p;
+    if (e.p.filter(x => x != null).length < e.n) return;
+    parts.delete(w.a);
+    let obj; try { obj = await unseal(e.p.join("")); } catch { return; }
+    apply(obj, m);
+  }
+  function lineKey(o, i) { return o.dev + ":" + o.sid + ":" + (o.seq0 + i); }
+  function apply(o, m) {
+    const t = (m.time || 0) * 1000;
+    if (o.t === "conv") {
+      if (o.sid !== S.sid) { S.sid = o.sid; }
+      let map = S.lines.get(o.sid); if (!map) { map = new Map(); S.lines.set(o.sid, map); }
+      o.lines.forEach((l, i) => { const k = lineKey(o, i); if (!map.has(k)) map.set(k, { r: l.r, x: l.x, dev: o.dev, dn: o.dn, n: o.seq0 + i, t }); });
+      S.lastActivity = Math.max(S.lastActivity, t);
+    } else if (o.t === "ctl") {
+      S.lastActivity = Math.max(S.lastActivity, t);
+      if (o.k === "reset") { S.sid = o.sid; if (!S.lines.has(o.sid)) S.lines.set(o.sid, new Map()); S.active = null; S.activeAt = t; if (myActive && o.dev !== DEV) hooks.takeover(o.dn); }
+      if (o.k === "start") {
+        if (o.sid !== S.sid) S.sid = o.sid;
+        if (!S.lines.has(o.sid)) S.lines.set(o.sid, new Map());
+        if (t >= S.activeAt) { S.active = o.dev; S.activeName = o.dn; S.activeAt = t; }
+        if (o.dev === DEV && myActive && o.sid === mySid) { ownStartSeen = true; ownStartTime = t; }
+        else if (o.dev !== DEV && myActive && ownStartSeen && t >= ownStartTime) hooks.takeover(o.dn);
+      }
+      if (o.k === "stop" && S.active === o.dev && t >= S.activeAt) { S.active = null; S.activeAt = t; }
+    } else if (o.t === "data" && !HAS_LOCAL_DATA) {
+      if (o.agg !== S.dataAt) { S.dataAt = o.agg; window.JARVIS_DATI = o.d; store.set("jarvis-data-cache", JSON.stringify(o.d)); try { render(); } catch {} }
+    }
+    hooks.change();
+  }
+  async function catchUp() {
+    try {
+      const r = await fetch(SYNC_HOST + "/" + topic + "/json?poll=1&since=" + (lastId || "12h"));
+      if (!r.ok) throw 0;
+      const txt = await r.text();
+      for (const ln of txt.split("\n")) { if (!ln.trim()) continue; let m; try { m = JSON.parse(ln); } catch { continue; } await ingest(m); }
+      setStatus("attiva");
+    } catch { setStatus("offline"); }
+  }
+  let backoff = 2000;
+  function connect() {
+    if (!enabled) return;
+    try { if (es) es.close(); } catch {}
+    try { es = new EventSource(SYNC_HOST + "/" + topic + "/sse?since=" + (lastId || "12h")); } catch { setTimeout(connect, 5000); return; }
+    es.onopen = () => { backoff = 2000; setStatus("attiva"); };
+    es.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch { return; } ingest(m); };
+    es.onerror = () => { try { es.close(); } catch {} setStatus("offline"); setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 30000); };
+  }
+
+  /* ---- chiave ---- */
+  function keyFromWhere() {
+    if (HASH_K) { store.set("jarvis-sync-key", HASH_K); return HASH_K; }
+    return store.get("jarvis-sync-key") || window.JARVIS_SYNC_KEY || null;
+  }
+  async function init() {
+    const k = keyFromWhere();
+    if (!k || !crypto.subtle) { setStatus(k ? "non disponibile su questo browser" : "non configurata"); return; }
+    try {
+      const raw = unb64u(k);
+      const base = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveBits", "deriveKey"]);
+      const tb = new Uint8Array(await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: te.encode("jarvis-topic") }, base, 128));
+      topic = "jv" + hex(tb);
+      aes = await crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: te.encode("jarvis-aes") }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+      enabled = true;
+    } catch { setStatus("chiave non valida"); return; }
+    if (!HAS_LOCAL_DATA) { try { const c = JSON.parse(store.get("jarvis-data-cache") || "null"); if (c) { window.JARVIS_DATI = c; S.dataAt = c.aggiornato; render(); } } catch {} }
+    readyP = catchUp().then(() => { connect(); });
+    await readyP;
+    if (HAS_LOCAL_DATA) dataChanged();
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && enabled) { catchUp(); connect(); } });
+    window.addEventListener("online", () => { if (enabled) { catchUp(); connect(); } });
+    const bye = () => { if (myActive && stopWire && !byeSent) { byeSent = true; for (const t of stopWire) { let sent = false; try { sent = navigator.sendBeacon && navigator.sendBeacon(SYNC_HOST + "/" + topic, t); } catch {} if (!sent) { try { fetch(SYNC_HOST + "/" + topic, { method: "POST", body: t, keepalive: true }); } catch {} } } } };
+    window.addEventListener("pagehide", bye); window.addEventListener("beforeunload", bye);
+  }
+
+  /* ---- dati del pannello (il Mac li pubblica, il telefono li riceve) ---- */
+  function dataChanged() {
+    if (!enabled || !HAS_LOCAL_DATA) return;
+    const D = window.JARVIS_DATI; if (!D || !D.aggiornato) return;
+    if (store.get("jarvis-data-pub") === D.aggiornato + "|" + topic) return;
+    store.set("jarvis-data-pub", D.aggiornato + "|" + topic);
+    publish({ t: "data", agg: D.aggiornato, d: D });
+  }
+
+  /* ---- conversazione ---- */
+  function ready(ms) { if (!enabled) return Promise.resolve(); return Promise.race([catchUp(), sleep(ms)]); }
+  function curLines(sid) { const map = S.lines.get(sid || S.sid); return map ? Array.from(map.values()).sort((a, b) => a.n - b.n || a.dev.localeCompare(b.dev)) : []; }
+  function historyText() {
+    const sid = mySid; const L = curLines(sid).filter(l => l.x);
+    if (!L.length) return "";
+    const first = L[0].dn || "un altro dispositivo";
+    let t = L.slice(-60).map(l => (l.r === "u" ? "Filippo" : "Jarvis") + ": " + l.x).join("\n");
+    if (t.length > 7000) t = "…" + t.slice(-7000);
+    return "CONVERSAZIONE GIÀ IN CORSO (iniziata sul " + first + ", ora Filippo continua sul " + DEV_NAME + "). Trascrizione completa fin qui:\n" + t + "\nContinua esattamente da qui: non salutare di nuovo, non ripresentarti, non riassumere. Rispondi alla prossima cosa che dice Filippo tenendo conto di tutto quello che vi siete detti.";
+  }
+  function beginSession() {
+    const now = Date.now();
+    if (S.sid && curLines(S.sid).length && now - S.lastActivity < 6 * 3600e3) mySid = S.sid; else { mySid = rnd(10); }
+    S.sid = mySid; if (!S.lines.has(mySid)) S.lines.set(mySid, new Map());
+    myActive = true; byeSent = false; ownStartSeen = false; ownStartTime = 0; seq = Math.floor(now / 1000) * 1000;
+    buf = []; S.lastActivity = now; S.active = DEV; S.activeName = DEV_NAME; S.activeAt = Math.max(S.activeAt, Math.floor(now / 1000) * 1000);
+    wire({ t: "ctl", k: "stop", sid: mySid, dev: DEV, dn: DEV_NAME }).then(w => { stopWire = w; }).catch(() => {});
+    publish({ t: "ctl", k: "start", sid: mySid, dev: DEV, dn: DEV_NAME });
+    hooks.change();
+    return mySid;
+  }
+  function line(r, x) {
+    if (!x) return;
+    const n = seq++;
+    const map = S.lines.get(mySid) || new Map(); S.lines.set(mySid, map);
+    map.set(DEV + ":" + mySid + ":" + n, { r, x, dev: DEV, dn: DEV_NAME, n, t: Date.now() });
+    buf.push({ r, x, n }); hooks.change();
+    clearTimeout(flushT); flushT = setTimeout(flush, 4000);
+  }
+  function flush() {
+    clearTimeout(flushT); flushT = null;
+    if (!buf.length) return Promise.resolve();
+    const items = buf; buf = [];
+    // le righe di un invio hanno numeri consecutivi; se non lo sono si divide in più invii
+    const groups = []; let g = null;
+    for (const it of items) { if (g && it.n === g.seq0 + g.lines.length) g.lines.push({ r: it.r, x: it.x }); else { g = { t: "conv", sid: mySid, dev: DEV, dn: DEV_NAME, seq0: it.n, lines: [{ r: it.r, x: it.x }] }; groups.push(g); } }
+    return Promise.all(groups.map(publish));
+  }
+  async function endSession(silent) {
+    if (!myActive) return;
+    const sid = mySid;
+    await flush();
+    myActive = false;
+    if (S.active === DEV) { S.active = null; }
+    if (!silent) await publish({ t: "ctl", k: "stop", sid, dev: DEV, dn: DEV_NAME });
+    hooks.change();
+  }
+  function reset() {
+    const sid = rnd(10); S.sid = sid; S.lines.set(sid, new Map()); S.active = null;
+    publish({ t: "ctl", k: "reset", sid, dev: DEV, dn: DEV_NAME }); hooks.change();
+  }
+  function pairUrl() {
+    const k = store.get("jarvis-sync-key") || window.JARVIS_SYNC_KEY; const host = window.JARVIS_HOST;
+    return (k && host) ? host.replace(/#.*$/, "") + "#k=" + k + "&a=" + AGENT_ID : null;
+  }
+  return {
+    init, ready, beginSession, endSession, line, flush, historyText, dataChanged, reset, pairUrl,
+    lines: () => curLines(S.sid), get active() { return (S.active && Date.now() - S.lastActivity < 10 * 60e3) ? S.active : null; }, get activeName() { return S.activeName; },
+    get status() { return status; }, get enabled() { return enabled; }, get topic() { return topic; },
+    get myActive() { return myActive; }, get sid() { return S.sid; },
+    on(h) { Object.assign(hooks, h); }
+  };
+})();
+
+/* ---------- interfaccia della sincronizzazione ---------- */
+function renderSyncUi() {
+  const L = Sync.lines().slice(-8), box = $("log");
+  box.replaceChildren();
+  L.forEach(l => { const d = el("div", "ln " + l.r); d.append(el("b", null, l.r === "u" ? "Tu" : "Jarvis"), document.createTextNode(l.x)); box.append(d); });
+  box.scrollTop = box.scrollHeight;
+  const h = $("handoff");
+  if (Sync.enabled && Sync.active && Sync.active !== DEV && !conv) { h.hidden = false; h.className = "handoff"; h.textContent = "Jarvis sta parlando con te sul " + Sync.activeName + ". Premi «Parla con Jarvis» qui per continuare da dove eri: l'altro dispositivo si ferma."; }
+  else if (Sync.enabled && Sync.myActive) { h.hidden = false; h.className = "handoff here"; h.textContent = "Conversazione attiva su questo " + DEV_NAME + "."; }
+  else h.hidden = true;
+  $("syncState").textContent = "sincronizzazione: " + Sync.status;
+  $("pairBtn").hidden = !Sync.pairUrl();
+}
+Sync.on({
+  change: () => { try { renderSyncUi(); } catch {} },
+  takeover: name => { if (conv) { const c = conv; stopUi(); try { c.endSession(); } catch {} Sync.endSession(true); setState("continui sul " + name); $("live").textContent = "La conversazione è passata sul " + name + "."; } }
+});
+$("newConv").onclick = async () => { if (conv) await toggle(); Sync.reset(); $("live").textContent = "Nuova conversazione."; };
+$("pairBtn").onclick = () => {
+  const u = Sync.pairUrl(), box = $("pair"); if (!u) return;
+  box.hidden = !box.hidden; if (box.hidden) return;
+  $("pairUrl").value = u;
+  const qr = $("pairQr"); qr.replaceChildren();
+  try { if (window.qrcode) { const q = window.qrcode(0, "M"); q.addData(u); q.make(); const img = document.createElement("img"); img.src = q.createDataURL(5, 6); img.alt = "QR"; qr.append(img); } } catch {}
+};
+$("pairCopy").onclick = () => { const i = $("pairUrl"); i.select(); try { navigator.clipboard.writeText(i.value); } catch { document.execCommand("copy"); } };
+
+/* ---------- voce ---------- */
+let starting = false, ctxSent = false;
+function saluto(){ const h = new Date().getHours(); return (h < 13 ? "Buongiorno" : h < 18 ? "Buon pomeriggio" : "Buonasera") + ", Filippo."; }
+function sendCtx(c, hist){
+  if (ctxSent) return; ctxSent = true;
+  try { c.sendContextualUpdate(contesto() + (hist ? "\n\n" + hist : "")); } catch {}
+}
+async function start(){
+  if (starting || conv) return;
+  if (!window.ElevenLabsClient){ setState("Libreria vocale non caricata: controlla la connessione e ricarica la pagina.", true); return; }
+  if (!AGENT_ID) { setState("Manca il collegamento a Jarvis: riapri l'indirizzo che ti ho dato (quello con #k=…).", true); return; }
+  starting = true; ctxSent = false;
+  try {
+    setState("collegamento…"); musicStart(); $("talk").classList.add("on"); $("talkLabel").textContent = "Termina";
+    await Sync.ready(2500);
+    Sync.beginSession();
+    const hist = Sync.historyText();
+    let c = null;
+    c = await ElevenLabsClient.Conversation.startSession({
+      agentId: AGENT_ID,
+      connectionType: "websocket",
+      ...(hist ? { overrides: { agent: { firstMessage: "Eccomi, sono qui." } } } : {}),
+      ...(window.JARVIS_TEXT_ONLY ? { textOnly: true } : {}),
+      onMCPToolApprovalRequest: chiediConferma,
+      onConnect: () => { if (c) sendCtx(c, hist); },
+      onStatusChange: ({ status }) => { if (status === "connected") setState("in ascolto"); if (status === "disconnected") stopUi(); },
+      onModeChange: ({ mode: m }) => { const was = mode; mode = m; musicDuck(m === "speaking"); setState(m === "speaking" ? "parlo" : "in ascolto"); if (was === "speaking" && m === "listening") setTimeout(() => Sync.flush(), 500); },
+      onMessage: ({ message, source }) => { const x = clean(message); if (!x) return; $("live").textContent = (source === "user" ? "Tu: " : "Jarvis: ") + x; Sync.line(source === "user" ? "u" : "a", x); },
+      onError: (msg) => { setState("Errore: " + String(msg).slice(0,120), true); },
+      onDisconnect: () => stopUi()
+    });
+    conv = c;
+    sendCtx(c, hist);
+    setTimeout(() => { if (conv === c) { ctxSent = false; sendCtx(c, hist); } }, 1500);
+    renderSyncUi();
+  } catch (e) {
+    stopUi();
+    const m = String(e && (e.message || e));
+    setState(/permission|notallowed|denied/i.test(m) ? "Serve il permesso del microfono: clicca l'icona nella barra degli indirizzi e consenti." : "Non riesco a collegarmi a Jarvis: " + m.slice(0,120), true);
+  } finally { starting = false; }
+}
+function stopUi(){ musicStop(); const was = conv; conv = null; mode = "idle"; $("talk").classList.remove("on"); $("talkLabel").textContent = "Parla con Jarvis"; if (!$("state").classList.contains("err")) setState("pronto"); if (was || Sync.myActive) Sync.endSession(); renderSyncUi(); }
+async function toggle(){ if (conv){ const c = conv; stopUi(); try { await c.endSession(); } catch {} } else start(); }
+$("talk").onclick = toggle; $("orbWrap").onclick = toggle;
+window.__jarvisSend = t => { if (conv) conv.sendUserMessage(t); };
+Sync.init().then(renderSyncUi);
+setInterval(() => { try { renderSyncUi(); } catch {} }, 30000);
+renderSyncUi();
+
+
+/* ---------- nucleo animato, reagisce alla voce ---------- */
+const cv = $("orb"), cx = cv.getContext("2d");
+const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+const N = 900, pts = [];
+for (let i = 0; i < N; i++){ const y = 1 - (i/(N-1))*2, r = Math.sqrt(1-y*y), th = i*2.399963; pts.push([Math.cos(th)*r, y, Math.sin(th)*r]); }
+let rot = 0, energy = 0;
+function size(){ const r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio||1); cv.width = Math.max(1,r.width*dpr); cv.height = Math.max(1,r.height*dpr); }
+size(); window.addEventListener("resize", size);
+function level(){ if (!conv) return 0; try { return mode === "speaking" ? conv.getOutputVolume() : conv.getInputVolume() * 0.6; } catch { return 0; } }
+function frame(t){
+  const w = cv.width, h = cv.height, R = Math.min(w,h)*0.32, cxm = w/2, cym = h/2;
+  const target = conv ? Math.min(1, 0.25 + level()*2.2) : 0.12;
+  energy += (target - energy) * 0.15;
+  rot += reduce ? 0 : 0.004 + energy*0.02;
+  cx.clearRect(0,0,w,h);
+  const g = cx.createRadialGradient(cxm,cym,R*0.1,cxm,cym,R*1.6);
+  g.addColorStop(0,"rgba(63,208,240,"+(0.18+energy*0.4)+")"); g.addColorStop(1,"rgba(63,208,240,0)");
+  cx.fillStyle = g; cx.beginPath(); cx.arc(cxm,cym,R*1.6,0,Math.PI*2); cx.fill();
+  cx.strokeStyle = "rgba(63,208,240,"+(0.3+energy*0.4)+")"; cx.lineWidth = Math.max(1,w/500);
+  cx.beginPath(); cx.ellipse(cxm,cym,R*1.3,R*0.3,-0.25 + t/9000,0,Math.PI*2); cx.stroke();
+  cx.beginPath(); cx.ellipse(cxm,cym,R*1.18,R*0.22,0.6 - t/12000,0,Math.PI*2); cx.stroke();
+  cx.beginPath(); cx.arc(cxm,cym,R*1.06,0,Math.PI*2); cx.stroke();
+  const cr = Math.cos(rot), sr = Math.sin(rot), ct = Math.cos(0.35), st = Math.sin(0.35);
+  const s = R*(1 + energy*0.08*Math.sin(t/90));
+  for (const p of pts){
+    const x = p[0]*cr - p[2]*sr, z = p[0]*sr + p[2]*cr, y = p[1];
+    const y2 = y*ct - z*st, z2 = y*st + z*ct, depth = (z2+1)/2;
+    cx.fillStyle = "rgba(150,235,255,"+(0.12+depth*0.78)+")";
+    const d = (0.6 + depth*1.7 + energy)*(w/420);
+    cx.fillRect(cxm + x*s, cym + y2*s, d, d);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
