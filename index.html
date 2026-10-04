@@ -284,45 +284,35 @@ function chiediConferma(call, ctx){
   });
 }
 /* ---------- musica di sottofondo: "Back in Black" (video ufficiale AC/DC, YouTube IFrame API) ---------- */
+/* La musica NON parte mai da sola: solo quando premi "Parla con Jarvis". Niente pre-caricamento. */
 const noMusic = $("noMusic");
 noMusic.checked = store.get("jarvis-nomusic") === "1";
 noMusic.addEventListener("change", () => { store.set("jarvis-nomusic", noMusic.checked ? "1" : "0"); if (noMusic.checked) musicStop(); });
 const YT_ID = "pAgnJDJN4VA";
-const YT_START = 3;          /* secondi: la canzone parte già dentro il riff di chitarra (cambia qui se vuoi più avanti/indietro) */
-const SONG_MIN = 200;        /* durata minima (s) per riconoscere la canzone vera: sotto questa soglia è una pubblicità */
+const YT_START = 3;          /* secondi: parte già dentro il riff di chitarra (cambia qui se vuoi più avanti/indietro) */
+const SONG_MIN = 200;        /* durata minima (s) della canzone vera: un video più corto è una pubblicità */
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-let yt = null, ytReady = false, ytWant = false, ytVol = 0, fadeT = null, primed = false, adSeen = false, primeTry = 0;
-window.__music = () => ({ ready: ytReady, want: ytWant, vol: ytVol, primed, ios: IOS, state: (yt && yt.getPlayerState) ? yt.getPlayerState() : null, dur: (yt && yt.getDuration) ? yt.getDuration() : null, err: window.__ytErr || null });
-function isSong(){ try { return yt.getDuration() > SONG_MIN; } catch { return false; } }
-/* Pre-caricamento MUTO appena la pagina è pronta: se YouTube mette una pubblicità, passa qui in silenzio e non quando premi "Parla". */
-function prime(){
-  if (!ytReady || primed || ytWant || primeTry >= 3) return;
-  primeTry++;
-  try { yt.mute(); yt.setVolume(0); yt.playVideo(); } catch {}
-  setTimeout(() => { if (!primed && !ytWant) prime(); }, 8000);
-}
-function onYtState(e){
-  const st = e.data;
-  if (st !== 1) return;                         /* interessa solo "in riproduzione" */
-  if (!ytWant) {                                /* fase di pre-caricamento muto */
-    if (isSong()) { primed = true; try { yt.pauseVideo(); yt.seekTo(YT_START, true); } catch {} }
-    else { try { yt.mute(); } catch {} }        /* pubblicità: resta muta */
-    return;
-  }
-  if (isSong()) {                               /* musica vera mentre Jarvis è attivo */
-    if (adSeen) { adSeen = false; try { yt.seekTo(YT_START, true); } catch {} }
-    audioOn();
-  } else { adSeen = true; try { yt.mute(); } catch {} }   /* pubblicità: sempre muta */
-}
+let yt = null, ytReady = false, ytWant = false, ytVol = 0, fadeT = null, adSeen = false;
+window.__music = () => ({ ready: ytReady, want: ytWant, vol: ytVol, ios: IOS, state: (yt && yt.getPlayerState) ? yt.getPlayerState() : null, dur: (yt && yt.getDuration) ? yt.getDuration() : null, t: (yt && yt.getCurrentTime) ? yt.getCurrentTime() : null, muted: (yt && yt.isMuted) ? yt.isMuted() : null, ad: adSeen, err: window.__ytErr || null });
+function isAd(){ try { const d = yt.getDuration(); return d > 0 && d <= SONG_MIN; } catch { return false; } }
 function audioOn(){ try { yt.unMute(); if (!IOS) yt.setVolume(Math.round(Math.max(0.06, ytVol) * 100)); } catch {} }
+/* se YouTube mette una pubblicità mentre la musica è richiesta: resta muta, e la canzone parte appena finisce */
+function checkAd(){
+  if (!ytReady || !ytWant) return;
+  let st = -1; try { st = yt.getPlayerState(); } catch {}
+  if (st !== 1 && st !== 3) return;
+  if (isAd()) { adSeen = true; try { yt.mute(); } catch {} }
+  else if (adSeen) { adSeen = false; try { yt.seekTo(YT_START, true); } catch {} audioOn(); }
+}
+setInterval(checkAd, 700);
 window.onYouTubeIframeAPIReady = () => {
   try {
     yt = new YT.Player("ytPlayer", {
       width: "200", height: "200", videoId: YT_ID,
-      playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1, loop: 1, playlist: YT_ID, start: YT_START },
+      playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1, loop: 1, playlist: YT_ID },
       events: {
-        onReady: () => { ytReady = true; if (ytWant && !noMusic.checked) musicStart(); else prime(); },
-        onStateChange: onYtState,
+        onReady: () => { ytReady = true; if (ytWant && !noMusic.checked) musicStart(); },
+        onStateChange: () => checkAd(),
         onError: e => { window.__ytErr = e && e.data; }
       }
     });
@@ -341,26 +331,18 @@ function musicVol(v, done){
 }
 function musicStart(){
   if (noMusic.checked) return;
-  ytWant = true;
+  ytWant = true; adSeen = false;
   if (!ytReady) return;                 /* partirà da sola appena il player è pronto */
-  try {
-    clearInterval(fadeT);
-    yt.seekTo(YT_START, true);
-    ytVol = 0.35;
-    if (isSong() || primed) { yt.unMute(); if (!IOS) yt.setVolume(35); }   /* canzone pronta: si sente subito */
-    else { yt.mute(); }                                                   /* altrimenti resta muto finché non è la canzone vera */
-    yt.playVideo();
-  } catch {}
+  try { clearInterval(fadeT); yt.unMute(); yt.seekTo(YT_START, true); ytSet(0.35); yt.playVideo(); } catch {}
 }
 function musicStop(){
   ytWant = false; adSeen = false;
   if (!ytReady) return;
-  const fin = () => { try { if (!ytWant) { yt.pauseVideo(); yt.seekTo(YT_START, true); } } catch {} };
-  musicVol(0, fin);
+  musicVol(0, () => { try { if (!ytWant) yt.pauseVideo(); } catch {} });
 }
 function musicDuck(speaking){
-  if (!ytReady || !ytWant) return;
-  if (IOS) { try { speaking ? yt.mute() : (isSong() && yt.unMute()); } catch {} return; }
+  if (!ytReady || !ytWant || adSeen) return;
+  if (IOS) { try { speaking ? yt.mute() : yt.unMute(); } catch {} return; }
   musicVol(speaking ? 0.06 : 0.14);
 }
 /* ================= SINCRONIZZAZIONE TRA DISPOSITIVI =================
