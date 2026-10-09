@@ -60,6 +60,7 @@ h1,h2,h3{font-weight:600}
 .approve button{font-family:var(--f-display);font-weight:700;letter-spacing:.1em;text-transform:uppercase;border:0;border-radius:6px;min-height:40px;padding:8px 16px;cursor:pointer}
 .approve .yes{background:var(--ok);color:var(--ink)}.approve .no{background:transparent;color:var(--fg);border:1px solid var(--line)}
 .musicbox{width:200px;height:200px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.musicbox.off{position:fixed;left:-10000px;top:0}   /* fermo: pronto ma fuori schermo; mentre suona è visibile */
 .live{font-size:14px;color:var(--muted);max-width:420px;min-height:1.4em;margin:0;text-wrap:balance}
 .handoff{width:100%;max-width:440px;font-size:13.5px;color:var(--ink);background:var(--warn);border-radius:8px;padding:8px 12px;text-align:left}
 .handoff.here{background:var(--ok)}
