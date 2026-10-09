@@ -14,16 +14,18 @@ const MAX_MB = 40;
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const opt = $("musicOn");
 let src = null;              /* "file" | "yt" */
-let audio = null, yt = null, ytErr = null, ytReady = false, want = false, vol = 0, fadeT = null, adSeen = false, ytLoading = false;
+let ctx = null, gain = null, audio = null, yt = null, ytErr = null, ytReady = false, want = false, vol = 0, fadeT = null, adSeen = false, ytLoading = false;
 
 opt.checked = store.get("jarvis-v2-musica") !== "0";   /* accesa di default */
 opt.addEventListener("change", () => { store.set("jarvis-v2-musica", opt.checked ? "1" : "0"); if (opt.checked) prepara(); else stop(); });
+/* volume della musica scelto da Filippo (0-1); mentre Jarvis ascolta/parla si abbassa ancora */
+const livello = () => { const v = +store.get("jarvis-v2-musica-vol"); return v > 0 ? Math.min(1, v) : 0.25; };
 const daSecondo = () => Math.max(0, Math.min(600, +store.get("jarvis-v2-canzone-da") || 0));
 
 /* ---------- canzone dal dispositivo ---------- */
 function usaFile(rec) {
   if (audio) { try { audio.pause(); URL.revokeObjectURL(audio.src); } catch {} }
-  audio = new Audio();
+  audio = new Audio(); gain = null;
   audio.src = URL.createObjectURL(rec.blob);
   audio.loop = true; audio.preload = "auto"; audio.setAttribute("playsinline", "");
   src = "file";
@@ -39,7 +41,7 @@ function checkAd() {
   let st = -1; try { st = yt.getPlayerState(); } catch {}
   if (st !== 1 && st !== 3) return;
   if (isAd()) { adSeen = true; try { yt.mute(); } catch {} }
-  else if (adSeen) { adSeen = false; try { yt.seekTo(YT_START, true); yt.unMute(); if (!IOS) yt.setVolume(Math.round(Math.max(0.06, vol) * 100)); } catch {} }
+  else if (adSeen) { adSeen = false; try { yt.seekTo(YT_START, true); yt.unMute(); if (!IOS) yt.setVolume(Math.round(Math.max(0.03, vol) * 100)); } catch {} }
 }
 setInterval(checkAd, 700);
 function caricaYT() {
@@ -68,27 +70,43 @@ async function prepara() {
 }
 
 /* ---------- comandi comuni ---------- */
+/* Il file passa da un regolatore Web Audio: è l'unico modo per cambiare il volume anche su iPhone. */
+function regolatore() {
+  if (gain || !audio) return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    ctx = ctx || new AC();
+    const srcNode = ctx.createMediaElementSource(audio);
+    gain = ctx.createGain(); gain.gain.value = 0;
+    srcNode.connect(gain).connect(ctx.destination);
+  } catch { gain = null; }
+}
+const fileVolOk = () => src === "file" && audio && (gain || !IOS);
 function setVol(v) {
   vol = Math.max(0, Math.min(1, v));
-  if (IOS) return;                                   /* su iPhone il volume da codice non funziona: si usa muto/non muto */
-  try { if (src === "file" && audio) audio.volume = vol; else if (src === "yt" && ytReady) yt.setVolume(Math.round(vol * 100)); } catch {}
+  try {
+    if (src === "file" && audio) { if (gain) gain.gain.value = vol; else if (!IOS) audio.volume = vol; }
+    else if (src === "yt" && ytReady && !IOS) yt.setVolume(Math.round(vol * 100));   /* YouTube su iPhone: solo muto/non muto */
+  } catch {}
 }
 function fade(v, done) {
   clearInterval(fadeT);
-  if (IOS) { vol = v; if (done) done(); return; }
+  if (IOS && !fileVolOk()) { vol = v; if (done) done(); return; }
   fadeT = setInterval(() => { const d = v - vol; if (Math.abs(d) < 0.02) { setVol(v); clearInterval(fadeT); if (done) done(); } else setVol(vol + Math.sign(d) * 0.03); }, 40);
 }
 function start() {
   if (!opt.checked) return;
   want = true; adSeen = false; clearInterval(fadeT);
   if (src === "file" && audio) {
+    regolatore();
+    if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
     try { audio.currentTime = daSecondo(); } catch {}
-    audio.muted = false; setVol(0.35);
+    audio.muted = false; setVol(livello());
     const p = audio.play(); if (p && p.catch) p.catch(() => {});
     return;
   }
   if (!ytReady) { caricaYT(); return; }             /* partirà da sola appena il lettore è pronto */
-  try { yt.unMute(); yt.seekTo(YT_START, true); setVol(0.35); yt.playVideo(); } catch {}
+  try { yt.unMute(); yt.seekTo(YT_START, true); setVol(livello()); yt.playVideo(); } catch {}
 }
 function stop() {
   want = false; adSeen = false;
@@ -98,10 +116,10 @@ function stop() {
 }
 function duck(speaking) {
   if (!want || adSeen) return;
-  if (src === "file" && audio) { if (IOS) audio.muted = speaking; else fade(speaking ? 0.06 : 0.14); return; }
+  if (src === "file" && audio) { if (fileVolOk()) fade(livello() * (speaking ? 0.15 : 0.45)); else audio.muted = speaking; return; }
   if (!ytReady) return;
   if (IOS) { try { speaking ? yt.mute() : yt.unMute(); } catch {} return; }
-  fade(speaking ? 0.06 : 0.14);
+  fade(livello() * (speaking ? 0.15 : 0.45));
 }
 
 /* ---------- pannello "Questo dispositivo": scelta della canzone ---------- */
@@ -121,6 +139,12 @@ $("songDel").addEventListener("click", async () => {
   $("songName").textContent = "Back in Black da YouTube"; $("songDel").hidden = true; $("songMsg").textContent = "Torno a YouTube.";
   if (opt.checked) caricaYT();
 });
+$("songVol").value = Math.round(livello() * 100);
+$("songVol").addEventListener("input", e => {
+  const v = Math.max(5, Math.min(100, +e.target.value || 25)) / 100;
+  store.set("jarvis-v2-musica-vol", String(v));
+  if (want) setVol(v);                   /* si sente subito se la musica sta suonando */
+});
 $("songFrom").value = daSecondo();
 $("songFrom").addEventListener("change", e => store.set("jarvis-v2-canzone-da", String(Math.max(0, Math.round(+e.target.value || 0)))));
 
@@ -128,7 +152,7 @@ prepara();
 
 /* stato per controlli (console: J.Musica.info()) */
 const info = () => ({
-  fonte: src, richiesta: want, pubblicita: adSeen, errore: ytErr,
+  fonte: src, volume: Math.round(vol * 100), regolatore: !!gain, richiesta: want, pubblicita: adSeen, errore: ytErr,
   secondo: src === "file" && audio ? Math.round(audio.currentTime) : (yt && yt.getCurrentTime ? Math.round(yt.getCurrentTime()) : null),
   suona: src === "file" && audio ? !audio.paused : (yt && yt.getPlayerState ? yt.getPlayerState() === 1 : false)
 });
