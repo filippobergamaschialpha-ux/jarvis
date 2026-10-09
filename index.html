@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file: https://unpkg.com https://www.youtube.com https://s.ytimg.com https://cdn.jsdelivr.net blob: data:; worker-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://i.ytimg.com; media-src 'self' blob: data:; connect-src 'self' https://ntfy.sh https://*.elevenlabs.io wss://*.elevenlabs.io https://*.workers.dev https://cdn.jsdelivr.net; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="theme-color" content="#07131d">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -64,7 +64,7 @@
       <pre id="approveText"></pre>
       <div class="btns"><button class="yes" id="approveYes" type="button">Conferma</button><button class="no" id="approveNo" type="button">Annulla</button></div>
     </div>
-    <div class="musicbox off" id="musicBox"><div id="ytPlayer"></div></div>
+    <div class="musicbox" id="musicBox" aria-hidden="true"><div id="ytPlayer"></div></div>
     <p class="live" id="live"></p>
     <div class="handoff" id="handoff" hidden></div>
     <div class="log" id="log"></div>
