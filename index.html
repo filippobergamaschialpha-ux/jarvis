@@ -100,6 +100,16 @@
       <div class="pb dev">
         <p>Sincronizzazione: <b id="syncState">non collegata</b></p>
         <p>Impronta del codice: <b id="fp">–</b> <span class="hint">(deve essere uguale su PC e telefono)</span></p>
+        <div class="song">
+          <p>Musica: <b id="songName">Back in Black da YouTube</b></p>
+          <div class="btns">
+            <label class="mini" for="songFile">Scegli canzone dal dispositivo</label>
+            <input type="file" id="songFile" accept="audio/*,.mp3,.m4a,.aac,.wav" hidden>
+            <button class="mini" id="songDel" type="button" hidden>Togli canzone (torna a YouTube)</button>
+          </div>
+          <label class="opt">Parti dal secondo <input type="number" id="songFrom" min="0" max="600" step="1" inputmode="numeric"></label>
+          <p class="hint" id="songMsg" role="status">Il file resta solo su questo dispositivo, non va su internet.</p>
+        </div>
         <div class="btns">
           <button class="mini" id="newConv" type="button">Nuova conversazione</button>
           <button class="mini" id="showToken" type="button">Mostra token per Cloudflare</button>
