@@ -58,12 +58,13 @@
       <div class="kpi"><b id="k-mail">–</b><span>Email 24 h</span></div>
     </div>
     <button class="talk" id="talk" type="button"><span class="dot"></span><span id="talkLabel">Parla con Jarvis</span></button>
+    <label class="opt"><input type="checkbox" id="musicOn"> Musica di sottofondo (Back in Black)</label>
     <div class="approve" id="approve" role="alertdialog" aria-labelledby="approveTitle" hidden>
       <h2 id="approveTitle">Jarvis vuole modificare</h2>
       <pre id="approveText"></pre>
       <div class="btns"><button class="yes" id="approveYes" type="button">Conferma</button><button class="no" id="approveNo" type="button">Annulla</button></div>
     </div>
-    <div class="musicbox" id="musicBox" hidden><div id="ytPlayer"></div></div>
+    <div class="musicbox off" id="musicBox"><div id="ytPlayer"></div></div>
     <p class="live" id="live"></p>
     <div class="handoff" id="handoff" hidden></div>
     <div class="log" id="log"></div>
@@ -99,7 +100,6 @@
       <div class="pb dev">
         <p>Sincronizzazione: <b id="syncState">non collegata</b></p>
         <p>Impronta del codice: <b id="fp">–</b> <span class="hint">(deve essere uguale su PC e telefono)</span></p>
-        <label class="opt"><input type="checkbox" id="musicOn"> Musica di sottofondo quando parlo con Jarvis</label>
         <div class="btns">
           <button class="mini" id="newConv" type="button">Nuova conversazione</button>
           <button class="mini" id="showToken" type="button">Mostra token per Cloudflare</button>
