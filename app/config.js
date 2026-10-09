@@ -3,6 +3,6 @@
    (es. "https://jarvis-firma.tuonome.workers.dev"). Finché è null si usa l'ID agente
    ricevuto in modo cifrato dal PC. */
 window.JARVIS_CONFIG = {
-  SIGNER: null,
+  SIGNER: "https://jarvis-firma.filippo-bergamaschi-alpha.workers.dev",
   RELAY: "https://ntfy.sh"
 };
