@@ -114,6 +114,7 @@ function stop() {
   if (!ytReady) return;
   fade(0, () => { try { if (!want) yt.pauseVideo(); } catch {} });
 }
+/* speaking = true: musica bassa (parla Jarvis oppure parli tu); false: livello "in ascolto" */
 function duck(speaking) {
   if (!want || adSeen) return;
   if (src === "file" && audio) { if (fileVolOk()) fade(livello() * (speaking ? 0.15 : 0.45)); else audio.muted = speaking; return; }

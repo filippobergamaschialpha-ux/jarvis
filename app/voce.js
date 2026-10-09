@@ -4,6 +4,28 @@
 const J = window.J, { $ } = J, Sync = J.Sync, CFG = window.JARVIS_CONFIG;
 let conv = null, mode = "idle", starting = false, ctxSent = false;
 
+/* Musica più bassa quando parla Jarvis E quando parli tu (così senti che ti sta ascoltando).
+   La tua voce si riconosce dal volume del microfono, con una soglia che si adatta al rumore di fondo. */
+let tuParli = false, ultimaVoce = 0, fondo = 0.02, abbassata = null, micT = null;
+function aggiornaMusica() {
+  const giu = mode === "speaking" || tuParli;
+  if (giu !== abbassata) { abbassata = giu; J.Musica.duck(giu); }
+}
+function ascoltaMicrofono() {
+  clearInterval(micT); tuParli = false; abbassata = null; fondo = 0.02;
+  micT = setInterval(() => {
+    if (!conv) return;
+    let v = 0; try { v = conv.getInputVolume(); } catch {}
+    const now = Date.now();
+    if (mode !== "speaking") {
+      fondo = v < fondo ? fondo * 0.9 + v * 0.1 : fondo * 0.995 + v * 0.005;   /* rumore di fondo: scende in fretta, sale piano */
+      if (v > Math.max(0.05, fondo * 2.5)) { tuParli = true; ultimaVoce = now; }
+    }
+    if (tuParli && now - ultimaVoce > 900) tuParli = false;                  /* 0,9 s di silenzio: la musica risale */
+    aggiornaMusica();
+  }, 100);
+}
+
 J.setState = (text, isErr) => { $("state").textContent = text; $("state").className = "state" + (isErr ? " err" : ""); };
 const clean = t => String(t || "").replace(/\[[a-z ]+\]\s*/gi, "").trim();
 J.orbActive = () => !!conv;
@@ -59,12 +81,12 @@ async function start() {
       onMCPToolApprovalRequest: chiediConferma,
       onConnect: () => { if (c) sendCtx(c, hist); },
       onStatusChange: ({ status }) => { if (status === "connected") J.setState("in ascolto"); if (status === "disconnected") stopUi(); },
-      onModeChange: ({ mode: m }) => { const was = mode; mode = m; J.Musica.duck(m === "speaking"); J.setState(m === "speaking" ? "parlo" : "in ascolto"); if (was === "speaking" && m === "listening") setTimeout(() => Sync.flush(), 500); },
+      onModeChange: ({ mode: m }) => { const was = mode; mode = m; if (m === "speaking") tuParli = false; aggiornaMusica(); J.setState(m === "speaking" ? "parlo" : "in ascolto"); if (was === "speaking" && m === "listening") setTimeout(() => Sync.flush(), 500); },
       onMessage: ({ message, source }) => { const x = clean(message); if (!x) return; $("live").textContent = (source === "user" ? "Tu: " : "Jarvis: ") + x; Sync.line(source === "user" ? "u" : "a", x); },
       onError: msg => J.setState("Errore: " + String(msg).slice(0, 120), true),
       onDisconnect: () => stopUi()
     });
-    conv = c; J.orbWake();
+    conv = c; J.orbWake(); ascoltaMicrofono();
     sendCtx(c, hist);
     setTimeout(() => { if (conv === c) { ctxSent = false; sendCtx(c, hist); } }, 1500);
     J.renderSyncUi();
@@ -75,6 +97,7 @@ async function start() {
   } finally { starting = false; }
 }
 function stopUi() {
+  clearInterval(micT); micT = null; tuParli = false; abbassata = null;
   J.Musica.stop(); const was = conv; conv = null; mode = "idle";
   $("talk").classList.remove("on"); $("talkLabel").textContent = "Parla con Jarvis";
   if (!$("state").classList.contains("err")) J.setState("pronto");
