@@ -110,6 +110,9 @@ ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .hint{font-size:12px}
 .opt{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);min-height:36px;cursor:pointer}
 .opt input{width:18px;height:18px;accent-color:var(--hud)}
+.opt input[type=number]{width:4.5em;height:auto;font:inherit;padding:4px 6px;color:var(--fg);background:#06111a;border:1px solid var(--line);border-radius:4px}
+.song{border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:6px}
+label.mini{display:inline-flex;align-items:center}
 .code{display:block;font-family:var(--f-mono);font-size:20px;letter-spacing:.06em;color:var(--fg);background:#06111a;border:1px solid var(--line);border-radius:6px;padding:10px 12px;user-select:all;overflow-wrap:anywhere}
 .code.small{font-size:13px;margin-top:8px}
 footer{max-width:1500px;margin:16px auto 0;font-size:12.5px;color:var(--muted);text-align:center}

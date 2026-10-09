@@ -1,42 +1,57 @@
-/* Musica di sottofondo: "Back in Black" (video ufficiale AC/DC, YouTube IFrame API).
-   Come nella prima versione: lettore invisibile, parte già dentro il riff quando premi
-   "Parla con Jarvis"; se YouTube mette una pubblicità resta muta e la canzone riparte
-   appena finisce. Si toglie con la spunta sotto il pulsante (la scelta viene ricordata). */
+/* Musica di sottofondo quando parli con Jarvis.
+   1) Se su questo dispositivo hai scelto un file della canzone ("Questo dispositivo > Scegli canzone"),
+      suona quello: parte subito, niente internet, niente YouTube. Il file resta SOLO sul dispositivo.
+   2) Altrimenti usa "Back in Black" da YouTube (lettore invisibile; se arriva una pubblicità resta
+      muta e la canzone riparte appena finisce).
+   Si toglie con la spunta sotto il pulsante (la scelta viene ricordata). */
 (() => {
 "use strict";
 const J = window.J, { $, store } = J;
 const YT_ID = "pAgnJDJN4VA";
-const YT_START = 3;          /* secondi: parte già dentro il riff di chitarra */
+const YT_START = 3;          /* secondi: nel video parte già dentro il riff di chitarra */
 const SONG_MIN = 200;        /* durata minima (s) della canzone vera: un video più corto è una pubblicità */
+const MAX_MB = 40;
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const opt = $("musicOn");
-let ytErr = null, yt = null, ytReady = false, ytWant = false, ytVol = 0, fadeT = null, adSeen = false, loading = false;
+let src = null;              /* "file" | "yt" */
+let audio = null, yt = null, ytErr = null, ytReady = false, want = false, vol = 0, fadeT = null, adSeen = false, ytLoading = false;
 
 opt.checked = store.get("jarvis-v2-musica") !== "0";   /* accesa di default */
-opt.addEventListener("change", () => { store.set("jarvis-v2-musica", opt.checked ? "1" : "0"); if (opt.checked) load(); else stop(); });
+opt.addEventListener("change", () => { store.set("jarvis-v2-musica", opt.checked ? "1" : "0"); if (opt.checked) prepara(); else stop(); });
+const daSecondo = () => Math.max(0, Math.min(600, +store.get("jarvis-v2-canzone-da") || 0));
 
+/* ---------- canzone dal dispositivo ---------- */
+function usaFile(rec) {
+  if (audio) { try { audio.pause(); URL.revokeObjectURL(audio.src); } catch {} }
+  audio = new Audio();
+  audio.src = URL.createObjectURL(rec.blob);
+  audio.loop = true; audio.preload = "auto"; audio.setAttribute("playsinline", "");
+  src = "file";
+  if (yt) { try { yt.pauseVideo(); } catch {} }
+  $("songName").textContent = rec.name || "canzone salvata";
+  $("songDel").hidden = false;
+}
+
+/* ---------- YouTube ---------- */
 function isAd() { try { const d = yt.getDuration(); return d > 0 && d <= SONG_MIN; } catch { return false; } }
-function audioOn() { try { yt.unMute(); if (!IOS) yt.setVolume(Math.round(Math.max(0.06, ytVol) * 100)); } catch {} }
-/* pubblicità mentre la musica è richiesta: muta; finita la pubblicità, la canzone riparte dal riff */
 function checkAd() {
-  if (!ytReady || !ytWant) return;
+  if (src !== "yt" || !ytReady || !want) return;
   let st = -1; try { st = yt.getPlayerState(); } catch {}
   if (st !== 1 && st !== 3) return;
   if (isAd()) { adSeen = true; try { yt.mute(); } catch {} }
-  else if (adSeen) { adSeen = false; try { yt.seekTo(YT_START, true); } catch {} audioOn(); }
+  else if (adSeen) { adSeen = false; try { yt.seekTo(YT_START, true); yt.unMute(); if (!IOS) yt.setVolume(Math.round(Math.max(0.06, vol) * 100)); } catch {} }
 }
 setInterval(checkAd, 700);
-
-/* il lettore si prepara subito all'apertura (su iPhone deve essere pronto quando tocchi il pulsante) */
-function load() {
-  if (loading) return; loading = true;
+function caricaYT() {
+  src = "yt";
+  if (ytLoading) return; ytLoading = true;
   window.onYouTubeIframeAPIReady = () => {
     try {
       yt = new YT.Player("ytPlayer", {
         width: "200", height: "200", videoId: YT_ID,
         playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1, loop: 1, playlist: YT_ID },
         events: {
-          onReady: () => { ytReady = true; if (ytWant && opt.checked) start(); },
+          onReady: () => { ytReady = true; if (want && opt.checked && src === "yt") start(); },
           onStateChange: () => checkAd(),
           onError: e => { ytErr = e && e.data; }
         }
@@ -45,34 +60,77 @@ function load() {
   };
   const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; sc.async = true; document.head.append(sc);
 }
-function setVol(v) { ytVol = v; if (IOS) return; try { if (ytReady) yt.setVolume(Math.round(Math.max(0, Math.min(1, v)) * 100)); } catch {} }
+
+/* prepara subito il lettore giusto: su iPhone deve essere pronto quando tocchi il pulsante */
+async function prepara() {
+  let rec = null; try { rec = await J.idb.get("canzone"); } catch {}
+  if (rec && rec.blob) usaFile(rec); else if (opt.checked) caricaYT();
+}
+
+/* ---------- comandi comuni ---------- */
+function setVol(v) {
+  vol = Math.max(0, Math.min(1, v));
+  if (IOS) return;                                   /* su iPhone il volume da codice non funziona: si usa muto/non muto */
+  try { if (src === "file" && audio) audio.volume = vol; else if (src === "yt" && ytReady) yt.setVolume(Math.round(vol * 100)); } catch {}
+}
 function fade(v, done) {
   clearInterval(fadeT);
-  if (IOS) { ytVol = v; if (done) done(); return; }   /* su iPhone il volume da codice non funziona: si usa muto/non muto */
-  fadeT = setInterval(() => {
-    const d = v - ytVol;
-    if (Math.abs(d) < 0.02) { setVol(v); clearInterval(fadeT); if (done) done(); }
-    else setVol(ytVol + Math.sign(d) * 0.03);
-  }, 40);
+  if (IOS) { vol = v; if (done) done(); return; }
+  fadeT = setInterval(() => { const d = v - vol; if (Math.abs(d) < 0.02) { setVol(v); clearInterval(fadeT); if (done) done(); } else setVol(vol + Math.sign(d) * 0.03); }, 40);
 }
 function start() {
   if (!opt.checked) return;
-  ytWant = true; adSeen = false;
-  if (!ytReady) { load(); return; }     /* partirà da sola appena il lettore è pronto */
-  try { clearInterval(fadeT); yt.unMute(); yt.seekTo(YT_START, true); setVol(0.35); yt.playVideo(); } catch {}
+  want = true; adSeen = false; clearInterval(fadeT);
+  if (src === "file" && audio) {
+    try { audio.currentTime = daSecondo(); } catch {}
+    audio.muted = false; setVol(0.35);
+    const p = audio.play(); if (p && p.catch) p.catch(() => {});
+    return;
+  }
+  if (!ytReady) { caricaYT(); return; }             /* partirà da sola appena il lettore è pronto */
+  try { yt.unMute(); yt.seekTo(YT_START, true); setVol(0.35); yt.playVideo(); } catch {}
 }
 function stop() {
-  ytWant = false; adSeen = false;
+  want = false; adSeen = false;
+  if (src === "file" && audio) { fade(0, () => { if (!want) audio.pause(); }); return; }
   if (!ytReady) return;
-  fade(0, () => { try { if (!ytWant) yt.pauseVideo(); } catch {} });
+  fade(0, () => { try { if (!want) yt.pauseVideo(); } catch {} });
 }
 function duck(speaking) {
-  if (!ytReady || !ytWant || adSeen) return;
+  if (!want || adSeen) return;
+  if (src === "file" && audio) { if (IOS) audio.muted = speaking; else fade(speaking ? 0.06 : 0.14); return; }
+  if (!ytReady) return;
   if (IOS) { try { speaking ? yt.mute() : yt.unMute(); } catch {} return; }
   fade(speaking ? 0.06 : 0.14);
 }
-if (opt.checked) load();
+
+/* ---------- pannello "Questo dispositivo": scelta della canzone ---------- */
+$("songFile").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  const msg = $("songMsg");
+  if (f.size > MAX_MB * 1048576) { msg.textContent = "File troppo grande (massimo " + MAX_MB + " MB)."; return; }
+  const rec = { blob: f, name: f.name };
+  try { await J.idb.put("canzone", rec); msg.textContent = "Canzone salvata su questo dispositivo."; }
+  catch { msg.textContent = "Non sono riuscito a salvarla: la userò solo finché la pagina resta aperta."; }
+  usaFile(rec);
+});
+$("songDel").addEventListener("click", async () => {
+  stop(); try { await J.idb.del("canzone"); } catch {}
+  if (audio) { try { URL.revokeObjectURL(audio.src); } catch {} audio = null; }
+  $("songName").textContent = "Back in Black da YouTube"; $("songDel").hidden = true; $("songMsg").textContent = "Torno a YouTube.";
+  if (opt.checked) caricaYT();
+});
+$("songFrom").value = daSecondo();
+$("songFrom").addEventListener("change", e => store.set("jarvis-v2-canzone-da", String(Math.max(0, Math.round(+e.target.value || 0)))));
+
+prepara();
+
 /* stato per controlli (console: J.Musica.info()) */
-const info = () => ({ pronto: ytReady, richiesta: ytWant, pubblicita: adSeen, stato: yt && yt.getPlayerState ? yt.getPlayerState() : null, secondo: yt && yt.getCurrentTime ? Math.round(yt.getCurrentTime()) : null, durata: yt && yt.getDuration ? Math.round(yt.getDuration()) : null, muto: yt && yt.isMuted ? yt.isMuted() : null, errore: ytErr });
+const info = () => ({
+  fonte: src, richiesta: want, pubblicita: adSeen, errore: ytErr,
+  secondo: src === "file" && audio ? Math.round(audio.currentTime) : (yt && yt.getCurrentTime ? Math.round(yt.getCurrentTime()) : null),
+  suona: src === "file" && audio ? !audio.paused : (yt && yt.getPlayerState ? yt.getPlayerState() === 1 : false)
+});
 J.Musica = { start, stop, duck, info };
 })();

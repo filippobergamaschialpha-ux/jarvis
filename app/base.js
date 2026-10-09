@@ -56,6 +56,13 @@ async function idbDo(mode, fn) {
   });
 }
 
+/* archivio locale del dispositivo (usato anche per la canzone scelta da Filippo) */
+J.idb = {
+  get: k => idbDo("readonly", st => st.get(k)),
+  put: (k, v) => idbDo("readwrite", st => st.put(v, k)),
+  del: k => idbDo("readwrite", st => st.delete(k))
+};
+
 const hkdf = (base, info, bits) => crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: te.encode(info) }, base, bits).then(b => new Uint8Array(b));
 
 /* Restituisce { topic, aes, impronta, tokenWorker() } oppure null se il dispositivo non è collegato. */
